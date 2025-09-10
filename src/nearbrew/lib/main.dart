@@ -1,122 +1,216 @@
+/*
+  NearBrew — Step 1 (Location-only screen)
+  -------------------------------------------------
+  What this file does right now:
+  • Requests location permission at runtime (Android).
+  • Gets your current GPS coordinates once and shows them on screen.
+  • Lots of comments so you can learn what each line is doing.
+
+  Next steps (after you test this compiles & runs):
+  • We will add the coffee search (OpenStreetMap/Overpass) and a list UI.
+  • We will add a "Get Directions" action that opens Google Maps.
+*/
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 void main() {
-  runApp(const MyApp());
+  // Entry point for the Flutter app. This runs once when the app starts.
+  runApp(const NearBrewApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class NearBrewApp extends StatelessWidget {
+  const NearBrewApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
+    // MaterialApp sets up themes, navigation, and the root screen.
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'NearBrew',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        // Material 3 look & a coffee-ish accent color.
+        useMaterial3: true,
+        colorSchemeSeed: Colors.brown,
+        brightness: Brightness.light,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const HomePage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _HomePageState extends State<HomePage> {
+  // Holds the most recent location. It starts as null because we haven't fetched it yet.
+  Position? _position;
 
-  void _incrementCounter() {
+  // For simple loading/error UI state.
+  bool _loading = false;
+  String? _error;
+
+  // 1) Ask for permission (if needed). 2) If granted, read current GPS location.
+  Future<void> _getLocationOnce() async {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _loading = true;
+      _error = null;
     });
+
+    try {
+      // ---- Step A: Is location service (GPS) turned on for the device? ----
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _loading = false;
+          _error = 'Location services are disabled. Please enable GPS.';
+        });
+        return; // Stop here because we cannot proceed without GPS.
+      }
+
+      // ---- Step B: Check permission status & request if denied. ----
+      LocationPermission permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _loading = false;
+            _error = 'Location permission was denied.';
+          });
+          return; // User said no — nothing else to do here.
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        // "Denied forever" means the user blocked it in system settings.
+        setState(() {
+          _loading = false;
+          _error = 'Location permission is permanently denied.\n'
+              'Open Settings > Apps > NearBrew > Permissions to enable.';
+        });
+        return;
+      }
+
+      // ---- Step C: All good — read the current position. ----
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _position = pos;
+        _loading = false;
+      });
+    } catch (e) {
+      // Any unexpected error ends up here.
+      setState(() {
+        _loading = false;
+        _error = 'Failed to get location: $e';
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('NearBrew'),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Card(
+              elevation: 1,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Step 1: Get your location',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Tap the button below to request permission and read your current GPS coordinates.\n'
+                      'Once this works, we\'ll add coffee search next.',
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Show a loading spinner while we ask for permission / get location.
+                    if (_loading) ...[
+                      const SizedBox(height: 16),
+                      const Center(child: CircularProgressIndicator()),
+                    ],
+
+                    // Show an error message (if any).
+                    if (_error != null && !_loading) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _error!,
+                        style: const TextStyle(color: Colors.redAccent),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+
+                    // Show coordinates if we have them.
+                    if (_position != null && !_loading) ...[
+                      const SizedBox(height: 12),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.brown.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Column(
+                            children: [
+                              const Text(
+                                'Current Position',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 8),
+                              Text('Latitude:  ${_position!.latitude.toStringAsFixed(6)}'),
+                              Text('Longitude: ${_position!.longitude.toStringAsFixed(6)}'),
+                              if (_position!.timestamp != null) ...[
+                                const SizedBox(height: 6),
+                                Text('Timestamp: ${_position!.timestamp}'),
+                              ]
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+
+                    // The main button to trigger permission + location read.
+                    FilledButton.icon(
+                      onPressed: _loading ? null : _getLocationOnce,
+                      icon: const Icon(Icons.my_location),
+                      label: const Text('Use my location'),
+                    ),
+
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Tip: The first time you tap this, Android will ask for permission.\n'
+                      'If you deny permanently, you\'ll need to enable it in Settings later.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
